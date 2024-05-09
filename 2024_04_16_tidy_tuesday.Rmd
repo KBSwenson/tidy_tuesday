@@ -1,6 +1,6 @@
 ---
 title: "TidyTemplate"
-date: 2024-04-16
+date: 2024-04-26
 output: html_document
 ---
 
@@ -20,8 +20,11 @@ library(tidyverse)
 library(tidytuesdayR)
 library(scales)
 library(lubridate)
+library(countrycode)
+library(ggthemes)
+library(ggmap)
 
-theme_set(theme_light())
+ theme_set(theme_light())
 
 ```
 
@@ -51,8 +54,9 @@ water <- tt$water %>%
 	separate(water_tech, c("water_tech", "brand"), sep = " - ",
 					 fill = "right") %>% 
 	mutate(install_year = ifelse(install_year > 2021, NA_real_, install_year)) %>% 
-	filter(!country %in% c("Peru", "Timor-Leste", "Dominican Republic"), !is.na(country)) # Remove Peru and Timor-Leste to clean data as it's supposed to be Africa data only
-
+	filter(!country %in% c("Peru", "Timor-Leste", "Dominican Republic"), !is.na(country)) %>% # Remove Peru and Timor-Leste to clean data as it's supposed to be Africa data only
+	filter(between(lat, -35, 37),
+				 between(lon, -40, 60))
 water %>% 
 	view()
 ```
@@ -107,17 +111,66 @@ water %>%
 # Testing a map
 ```{r}
 water %>% 
-	sample_n(100000) %>%
-	ggplot(aes(lon,lat, color = country)) +
-	geom_point()
-
-water %>% 
 	group_by(country) %>% 
 	summarize(lat = mean(lat),
 						lon = mean(lon)) %>% 
 	ggplot(aes(lon,lat, color = country)) +
 	geom_point() +
 	geom_text(aes(label = country), vjust = 1, hjust = 1)
+
+country_list <- unique(water$country)
+
+africa_map_data <- map_data("world") %>% 
+	as_tibble() %>% 
+	mutate(continent = countrycode(region, "country.name", "continent")) %>% 
+	filter(continent == "Africa")
+
+water %>% 
+	filter(country == "Uganda") %>% 
+	sample_n(10000) %>%
+	ggplot(aes(lon,lat)) +
+	geom_polygon(aes(long, lat, group = group),
+							color = "gray",
+							fill = "white",
+							data = africa_map_data,
+							size = .3)+
+	borders("world", regions = country_list) +
+	geom_point(size = .1, alpha = .25) +
+	theme_map()
+	
+	water %>% 
+		count(country, sort = T)
+
+```
+	
+	Start With: Where are recorded water wells in Uganda
+```{r}
+	# 
+	water_uganda <- water %>% 
+		filter(country == "Uganda",
+				 between(lat, -2,4),
+				 between(lon, 28, 40))
+
+	water_uganda_lumped <- water_uganda %>% 
+		mutate(water_source = fct_lump(water_source, 5)) %>% 
+		replace_na(list(water_source = "Other")) %>% 
+		mutate(fct_reorder(water_source, water_source, length, .desc = T))
+	
+	water_uganda_lumped$water_source %>% levels()
+	
+	water_uganda_lumped %>% 
+		filter(country == "Uganda",
+					 between(lat, -2,4),
+					 between(lon, 29, 40)) %>% 
+		ggplot(aes(lon,lat)) +
+		facet_wrap(~water_source) +
+		borders("world", regions = "Uganda") +
+		geom_point(size = .1, alpha = .25) +
+		theme_map() +
+		scale_color_discrete(guide = guide_legend(override.aes = list(size = 2, alpha = 1)))
 ```
 
-I think I want to do a map since a lot of the things I am going to visualize are going to be maps.
+```{r}
+
+```
+
